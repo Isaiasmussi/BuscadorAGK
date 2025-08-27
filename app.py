@@ -15,7 +15,7 @@ except KeyError as e:
     st.error(f"Erro ao carregar as chaves de API. Verifique a chave: {e}")
     st.stop()
 
-# --- Função de Busca (sem alterações) ---
+# --- Função de Busca ---
 def perform_search(query: str, engine_id: str):
     url = f"https://www.googleapis.com/customsearch/v1?key={API_KEY}&cx={engine_id}&q={query}"
     try:
@@ -29,7 +29,7 @@ def perform_search(query: str, engine_id: str):
 st.title("🔎 Buscador de Informações Agrolink")
 
 # --- Abas para Organização ---
-tab1, tab2, tab3 = st.tabs(["📁 Busca em Lote", "👤 Busca de Pessoas", "👔 Busca por Cargos"])
+tab1, tab2, tab3, tab4 = st.tabs(["🏢 Busca de Empresas", "👤 Busca de Pessoas", "👔 Busca por Cargos", "✍️ Busca Manual"])
 
 # --- Funcionalidade 1: Busca de Empresas em Lote ---
 with tab1:
@@ -41,9 +41,24 @@ with tab1:
     if uploaded_file_companies:
         stringio = io.StringIO(uploaded_file_companies.getvalue().decode("utf-8"))
         companies = [line.strip() for line in stringio.readlines() if line.strip()]
+        st.success(f"Arquivo lido! {len(companies)} empresas encontradas.")
+
         if st.button(f"Buscar LinkedIn para as {len(companies)} empresas"):
-            # (Lógica da busca de empresas aqui, como na versão anterior)
-            # ...
+            results_list = []
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            for i, company_name in enumerate(companies):
+                query = f'"{company_name}" site:linkedin.com/company/'
+                search_results = perform_search(query, engine_id=SEARCH_ID_LINKEDIN)
+                result_link = search_results[0].get('link') if search_results else "Nenhum resultado encontrado"
+                results_list.append({"Empresa Buscada": company_name, "Link Encontrado": result_link})
+                progress_bar.progress((i + 1) / len(companies))
+                status_text.text(f"Buscando: {company_name} ({i+1}/{len(companies)})")
+            status_text.success("Busca finalizada!")
+            df_results = pd.DataFrame(results_list)
+            st.dataframe(df_results, use_container_width=True)
+            csv = df_results.to_csv(index=False).encode('utf-8')
+            st.download_button(label="📥 Baixar CSV", data=csv, file_name="empresas_linkedin.csv", mime="text/csv")
 
 # --- Funcionalidade 2: Busca de Pessoas em Lote ---
 with tab2:
@@ -53,8 +68,38 @@ with tab2:
         "Escolha o arquivo CSV de pessoas", type=['csv'], key="people_uploader"
     )
     if uploaded_file_people:
-        # (Lógica da busca de pessoas aqui, como na versão anterior)
-        # ...
+        try:
+            df_pessoas = pd.read_csv(uploaded_file_people)
+            if 'Nome' not in df_pessoas.columns:
+                st.error("O arquivo CSV precisa ter pelo menos uma coluna chamada 'Nome'.")
+            else:
+                st.success(f"Arquivo lido! {len(df_pessoas)} pessoas para buscar.")
+                if st.button(f"Buscar perfis para as {len(df_pessoas)} pessoas"):
+                    results_list = []
+                    progress_bar = st.progress(0)
+                    status_text = st.empty()
+                    for index, row in df_pessoas.iterrows():
+                        nome = row.get('Nome', '')
+                        empresa = row.get('Empresa', '')
+                        cargo = row.get('Cargo', '')
+                        query = f'"{nome}" "{empresa}" "{cargo}" site:linkedin.com/in/'
+                        search_results = perform_search(query, engine_id=SEARCH_ID_LINKEDIN)
+                        if search_results:
+                            first_result = search_results[0]
+                            result_link = first_result.get('link')
+                            result_title = first_result.get('title')
+                        else:
+                            result_link, result_title = "Nenhum resultado", "-"
+                        results_list.append({"Nome Buscado": nome, "Empresa": empresa, "Cargo": cargo, "Perfil Encontrado": result_link, "Título do Perfil": result_title})
+                        progress_bar.progress((index + 1) / len(df_pessoas))
+                        status_text.text(f"Buscando: {nome} ({index+1}/{len(df_pessoas)})")
+                    status_text.success("Busca finalizada!")
+                    df_results = pd.DataFrame(results_list)
+                    st.dataframe(df_results, use_container_width=True)
+                    csv = df_results.to_csv(index=False).encode('utf-8')
+                    st.download_button(label="📥 Baixar CSV", data=csv, file_name="perfis_linkedin.csv", mime="text/csv")
+        except Exception as e:
+            st.error(f"Ocorreu um erro ao processar o arquivo: {e}")
 
 # --- Funcionalidade 3: Busca por Cargos em Lote ---
 with tab3:
@@ -74,60 +119,43 @@ with tab3:
                     results_list = []
                     progress_bar = st.progress(0)
                     status_text = st.empty()
-
                     for index, row in df_cargos.iterrows():
                         cargo = row.get('Cargo', '').strip()
                         empresa = row.get('Empresa', '').strip()
-                        
-                        # Constrói a query de busca
                         query = f'"{cargo}" "{empresa}" site:linkedin.com/in/'
-                        
                         search_results = perform_search(query, engine_id=SEARCH_ID_LINKEDIN)
-                        
                         if search_results:
-                            # Pega os 3 primeiros resultados para dar mais opções
                             links = [res.get('link') for res in search_results[:3]]
                             titles = [res.get('title') for res in search_results[:3]]
-                            
-                            results_list.append({
-                                "Cargo Buscado": cargo,
-                                "Empresa": empresa if empresa else "Qualquer",
-                                "Resultado 1": links[0] if len(links) > 0 else "N/A",
-                                "Título 1": titles[0] if len(titles) > 0 else "N/A",
-                                "Resultado 2": links[1] if len(links) > 1 else "N/A",
-                                "Título 2": titles[1] if len(titles) > 1 else "N/A",
-                                "Resultado 3": links[2] if len(links) > 2 else "N/A",
-                                "Título 3": titles[2] if len(titles) > 2 else "N/A",
-                            })
+                            results_list.append({"Cargo Buscado": cargo, "Empresa": empresa if empresa else "Qualquer", "Resultado 1": links[0] if len(links) > 0 else "N/A", "Título 1": titles[0] if len(titles) > 0 else "N/A", "Resultado 2": links[1] if len(links) > 1 else "N/A", "Título 2": titles[1] if len(titles) > 1 else "N/A", "Resultado 3": links[2] if len(links) > 2 else "N/A", "Título 3": titles[2] if len(titles) > 2 else "N/A"})
                         else:
-                             results_list.append({
-                                "Cargo Buscado": cargo, "Empresa": empresa, "Resultado 1": "Nenhum resultado", "Título 1": "-", "Resultado 2": "-", "Título 2": "-", "Resultado 3": "-", "Título 3": "-",
-                            })
-                        
+                            results_list.append({"Cargo Buscado": cargo, "Empresa": empresa, "Resultado 1": "Nenhum resultado", "Título 1": "-", "Resultado 2": "-", "Título 2": "-", "Resultado 3": "-", "Título 3": "-"})
                         progress_bar.progress((index + 1) / len(df_cargos))
                         status_text.text(f"Buscando: {cargo} ({index+1}/{len(df_cargos)})")
-                    
-                    status_text.success("Busca por cargos finalizada!")
+                    status_text.success("Busca finalizada!")
                     df_results = pd.DataFrame(results_list)
                     st.dataframe(df_results, use_container_width=True)
-
-                    @st.cache_data
-                    def convert_df_to_csv(df):
-                        return df.to_csv(index=False).encode('utf-8')
-
-                    csv = convert_df_to_csv(df_results)
-                    st.download_button(
-                        label="📥 Baixar resultados como CSV",
-                        data=csv,
-                        file_name="resultados_cargos_linkedin.csv",
-                        mime="text/csv",
-                    )
+                    csv = df_results.to_csv(index=False).encode('utf-8')
+                    st.download_button(label="📥 Baixar CSV", data=csv, file_name="cargos_linkedin.csv", mime="text/csv")
         except Exception as e:
             st.error(f"Ocorreu um erro ao processar o arquivo: {e}")
 
-st.markdown("---")
-
-# --- Funcionalidade 4: Busca Manual (como antes) ---
-st.header("Busca Manual Avulsa")
-# (O código da busca manual continua aqui, sem alterações)
-# ...
+# --- Funcionalidade 4: Busca Manual ---
+with tab4:
+    st.header("Busca Manual Avulsa")
+    search_option = st.radio("Onde pesquisar?", ('Toda a Web', 'Apenas no LinkedIn'), horizontal=True, key="manual_radio")
+    with st.form(key='manual_search_form'):
+        search_query = st.text_input("Digite sua busca", placeholder="Ex: Cotação do milho...")
+        submit_button = st.form_submit_button(label='Buscar')
+    if submit_button and search_query:
+        engine_id = SEARCH_ID_WEB if search_option == 'Toda a Web' else SEARCH_ID_LINKEDIN
+        with st.spinner(f'Pesquisando por "{search_query}"...'):
+            results = perform_search(search_query, engine_id=engine_id)
+        st.subheader("Resultados:")
+        if results:
+            for item in results:
+                st.markdown(f"### [{item.get('title')}]({item.get('link')})")
+                st.write(item.get('snippet'))
+                st.info(f"Link: {item.get('link')}")
+        else:
+            st.warning("Nenhum resultado encontrado.")
