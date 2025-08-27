@@ -99,12 +99,14 @@ with tab2:
         except Exception as e:
             st.error(f"Ocorreu um erro ao processar o arquivo: {e}")
 
-# --- Funcionalidade 3: Busca por Cargos em Lote ---
+# --- Funcionalidade 3: Busca por Cargos em Lote (VERSÃO COM PRECISÃO AUMENTADA) ---
 with tab3:
     st.header("Busca por Cargos em Lote no LinkedIn")
     st.markdown("Faça o upload de um arquivo `.csv` com as colunas `Cargo` e `Empresa` (opcional).")
+    st.info("💡 **Dica:** Para maior precisão, use o nome completo da empresa (ex: 'Adama Brasil' em vez de 'Adama').")
+    
     uploaded_file_cargos = st.file_uploader(
-        "Escolha o arquivo CSV de cargos", type=['csv'], key="cargos_uploader"
+        "Escolha o arquivo CSV de cargos", type=['csv'], key="cargos_uploader_v2"
     )
     if uploaded_file_cargos:
         try:
@@ -113,22 +115,42 @@ with tab3:
                 st.error("O arquivo CSV precisa ter pelo menos uma coluna chamada 'Cargo'.")
             else:
                 st.success(f"Arquivo lido! {len(df_cargos)} cargos para buscar.")
-                if st.button(f"Buscar perfis para os {len(df_cargos)} cargos", key="btn_cargos"):
+                if st.button(f"Buscar perfis para os {len(df_cargos)} cargos", key="btn_cargos_v2"):
                     results_list = []
                     progress_bar = st.progress(0, text="Iniciando busca...")
+
                     for index, row in df_cargos.iterrows():
                         cargo = row.get('Cargo', '').strip()
                         empresa_raw = row.get('Empresa', '')
                         empresa = str(empresa_raw).strip() if pd.notna(empresa_raw) else ""
-                        query = f'"{cargo}" "{empresa}" site:linkedin.com/in/'
+
+                        # --- LÓGICA DE BUSCA CIRÚRGICA ---
+                        # Se a empresa foi especificada, procuramos por ela no TÍTULO da página.
+                        # Isso garante que estamos pegando o cargo atual da pessoa.
+                        if empresa:
+                            query = f'"{cargo}" intitle:"{empresa}" site:linkedin.com/in/'
+                        # Se a empresa não foi especificada, buscamos o cargo de forma mais ampla.
+                        else:
+                            query = f'"{cargo}" site:linkedin.com/in/'
+                        # ------------------------------------
+
+                        progress_bar.progress((index + 1) / len(df_cargos), text=f"Buscando: {cargo} na {empresa}")
                         search_results = perform_search(query, engine_id=SEARCH_ID_LINKEDIN)
+                        
                         if search_results and isinstance(search_results, list):
                             links = [res.get('link') for res in search_results[:3]]
                             titles = [res.get('title') for res in search_results[:3]]
-                            results_list.append({"Cargo Buscado": cargo, "Empresa": empresa if empresa else "Qualquer", "Resultado 1": links[0] if len(links) > 0 else "N/A", "Título 1": titles[0] if len(titles) > 0 else "N/A", "Resultado 2": links[1] if len(links) > 1 else "N/A", "Título 2": titles[1] if len(titles) > 1 else "N/A", "Resultado 3": links[2] if len(links) > 2 else "N/A", "Título 3": titles[2] if len(titles) > 2 else "N/A"})
+                            results_list.append({
+                                "Cargo Buscado": cargo, "Empresa": empresa if empresa else "Qualquer",
+                                "Resultado 1": links[0] if len(links) > 0 else "N/A", "Título 1": titles[0] if len(titles) > 0 else "N/A",
+                                "Resultado 2": links[1] if len(links) > 1 else "N/A", "Título 2": titles[1] if len(titles) > 1 else "N/A",
+                                "Resultado 3": links[2] if len(links) > 2 else "N/A", "Título 3": titles[2] if len(titles) > 2 else "N/A",
+                            })
                         else:
-                            results_list.append({"Cargo Buscado": cargo, "Empresa": empresa, "Resultado 1": "Nenhum resultado", "Título 1": "-", "Resultado 2": "-", "Título 2": "-", "Resultado 3": "-", "Título 3": "-"})
-                        progress_bar.progress((index + 1) / len(df_cargos), text=f"Buscando: {cargo} na {empresa}")
+                             results_list.append({
+                                "Cargo Buscado": cargo, "Empresa": empresa, "Resultado 1": "Nenhum resultado", "Título 1": "-", "Resultado 2": "-", "Título 2": "-", "Resultado 3": "-", "Título 3": "-",
+                            })
+                    
                     st.success("Busca finalizada!")
                     df_results = pd.DataFrame(results_list)
                     st.dataframe(df_results, use_container_width=True)
