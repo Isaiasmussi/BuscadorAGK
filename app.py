@@ -101,7 +101,7 @@ with tab2:
         except Exception as e:
             st.error(f"Ocorreu um erro ao processar o arquivo: {e}")
 
-# --- Funcionalidade 3: Busca por Cargos em Lote (VERSÃO OTIMIZADA) ---
+# --- Funcionalidade 3: Busca por Cargos em Lote (VERSÃO CORRIGIDA) ---
 with tab3:
     st.header("Busca por Cargos em Lote no LinkedIn")
     st.markdown("Faça o upload de um arquivo `.csv` com as colunas `Cargo` e `Empresa` (opcional).")
@@ -122,35 +122,24 @@ with tab3:
 
                     for index, row in df_cargos.iterrows():
                         cargo = row.get('Cargo', '').strip()
-                        # Garantir que empresa seja uma string para evitar erros
                         empresa_raw = row.get('Empresa', '')
                         empresa = str(empresa_raw).strip() if pd.notna(empresa_raw) else ""
 
-                        # --- A MUDANÇA ESTÁ AQUI ---
-                        # Se o campo empresa estiver preenchido, usamos a busca otimizada com intitle:
-                        if empresa:
-                            query = f'intitle:"{cargo} * {empresa}" site:linkedin.com/in/'
-                        # Se não, fazemos uma busca mais genérica pelo cargo no título
-                        else:
-                            query = f'intitle:"{cargo}" site:linkedin.com/in/'
-                        # -------------------------
-
+                        # --- CORREÇÃO PRINCIPAL AQUI ---
+                        # Voltamos para a busca que busca no perfil inteiro. É mais confiável.
+                        query = f'"{cargo}" "{empresa}" site:linkedin.com/in/'
+                        # -------------------------------
+                        
                         search_results = perform_search(query, engine_id=SEARCH_ID_LINKEDIN)
                         
                         if search_results:
-                            # Pega os 3 primeiros resultados para dar mais opções
                             links = [res.get('link') for res in search_results[:3]]
                             titles = [res.get('title') for res in search_results[:3]]
-                            
                             results_list.append({
-                                "Cargo Buscado": cargo,
-                                "Empresa": empresa if empresa else "Qualquer",
-                                "Resultado 1": links[0] if len(links) > 0 else "N/A",
-                                "Título 1": titles[0] if len(titles) > 0 else "N/A",
-                                "Resultado 2": links[1] if len(links) > 1 else "N/A",
-                                "Título 2": titles[1] if len(titles) > 1 else "N/A",
-                                "Resultado 3": links[2] if len(links) > 2 else "N/A",
-                                "Título 3": titles[2] if len(titles) > 2 else "N/A",
+                                "Cargo Buscado": cargo, "Empresa": empresa if empresa else "Qualquer",
+                                "Resultado 1": links[0] if len(links) > 0 else "N/A", "Título 1": titles[0] if len(titles) > 0 else "N/A",
+                                "Resultado 2": links[1] if len(links) > 1 else "N/A", "Título 2": titles[1] if len(titles) > 1 else "N/A",
+                                "Resultado 3": links[2] if len(links) > 2 else "N/A", "Título 3": titles[2] if len(titles) > 2 else "N/A",
                             })
                         else:
                              results_list.append({
