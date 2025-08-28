@@ -99,14 +99,14 @@ with tab2:
         except Exception as e:
             st.error(f"Ocorreu um erro ao processar o arquivo: {e}")
 
-# --- Funcionalidade 3: Busca por Cargos em Lote (VERSÃO COM PRECISÃO AUMENTADA) ---
+# --- Funcionalidade 3: Busca por Cargos em Lote (com suporte a MÚLTIPLOS CARGOS) ---
 with tab3:
     st.header("Busca por Cargos em Lote no LinkedIn")
     st.markdown("Faça o upload de um arquivo `.csv` com as colunas `Cargo` e `Empresa` (opcional).")
-    st.info("💡 **Dica:** Para maior precisão, use o nome completo da empresa (ex: 'Adama Brasil' em vez de 'Adama').")
+    st.info("💡 **Dica:** Para buscar múltiplos cargos de uma vez, separe-os por vírgula na coluna 'Cargo'.")
     
     uploaded_file_cargos = st.file_uploader(
-        "Escolha o arquivo CSV de cargos", type=['csv'], key="cargos_uploader_v2"
+        "Escolha o arquivo CSV de cargos", type=['csv'], key="cargos_uploader_v3"
     )
     if uploaded_file_cargos:
         try:
@@ -114,48 +114,57 @@ with tab3:
             if 'Cargo' not in df_cargos.columns:
                 st.error("O arquivo CSV precisa ter pelo menos uma coluna chamada 'Cargo'.")
             else:
-                st.success(f"Arquivo lido! {len(df_cargos)} cargos para buscar.")
-                if st.button(f"Buscar perfis para os {len(df_cargos)} cargos", key="btn_cargos_v2"):
+                st.success(f"Arquivo lido! {len(df_cargos)} linhas de busca para processar.")
+                if st.button(f"Buscar perfis para as {len(df_cargos)} linhas", key="btn_cargos_v3"):
                     results_list = []
                     progress_bar = st.progress(0, text="Iniciando busca...")
 
                     for index, row in df_cargos.iterrows():
-                        cargo = row.get('Cargo', '').strip()
+                        # Pega a string da coluna 'Cargo'
+                        cargo_input = row.get('Cargo', '').strip()
                         empresa_raw = row.get('Empresa', '')
                         empresa = str(empresa_raw).strip() if pd.notna(empresa_raw) else ""
 
-                        # --- LÓGICA DE BUSCA CIRÚRGICA ---
-                        # Se a empresa foi especificada, procuramos por ela no TÍTULO da página.
-                        # Isso garante que estamos pegando o cargo atual da pessoa.
-                        if empresa:
-                            query = f'"{cargo}" intitle:"{empresa}" site:linkedin.com/in/'
-                        # Se a empresa não foi especificada, buscamos o cargo de forma mais ampla.
-                        else:
-                            query = f'"{cargo}" site:linkedin.com/in/'
-                        # ------------------------------------
+                        # --- NOVA LÓGICA PARA MÚLTIPLOS CARGOS ---
+                        # 1. Separa os cargos pela vírgula
+                        # 2. Remove espaços extras de cada cargo
+                        # 3. Adiciona aspas em volta de cada cargo
+                        cargo_parts = [f'"{part.strip()}"' for part in cargo_input.split(',')]
+                        # 4. Junta tudo com o operador OR
+                        cargo_query = " OR ".join(cargo_parts)
+                        # 5. Adiciona parênteses se tiver mais de um cargo, para agrupar a lógica
+                        if len(cargo_parts) > 1:
+                            cargo_query = f"({cargo_query})"
+                        # -------------------------------------------
 
-                        progress_bar.progress((index + 1) / len(df_cargos), text=f"Buscando: {cargo} na {empresa}")
+                        # Constrói a query final
+                        if empresa:
+                            query = f'{cargo_query} intitle:"{empresa}" site:linkedin.com/in/'
+                        else:
+                            query = f'{cargo_query} site:linkedin.com/in/'
+                        
+                        progress_bar.progress((index + 1) / len(df_cargos), text=f"Buscando: {cargo_input} na {empresa}")
                         search_results = perform_search(query, engine_id=SEARCH_ID_LINKEDIN)
                         
                         if search_results and isinstance(search_results, list):
                             links = [res.get('link') for res in search_results[:3]]
                             titles = [res.get('title') for res in search_results[:3]]
                             results_list.append({
-                                "Cargo Buscado": cargo, "Empresa": empresa if empresa else "Qualquer",
+                                "Busca Realizada": cargo_input, "Empresa": empresa if empresa else "Qualquer",
                                 "Resultado 1": links[0] if len(links) > 0 else "N/A", "Título 1": titles[0] if len(titles) > 0 else "N/A",
                                 "Resultado 2": links[1] if len(links) > 1 else "N/A", "Título 2": titles[1] if len(titles) > 1 else "N/A",
                                 "Resultado 3": links[2] if len(links) > 2 else "N/A", "Título 3": titles[2] if len(titles) > 2 else "N/A",
                             })
                         else:
                              results_list.append({
-                                "Cargo Buscado": cargo, "Empresa": empresa, "Resultado 1": "Nenhum resultado", "Título 1": "-", "Resultado 2": "-", "Título 2": "-", "Resultado 3": "-", "Título 3": "-",
+                                "Busca Realizada": cargo_input, "Empresa": empresa, "Resultado 1": "Nenhum resultado", "Título 1": "-", "Resultado 2": "-", "Título 2": "-", "Resultado 3": "-", "Título 3": "-",
                             })
                     
                     st.success("Busca finalizada!")
                     df_results = pd.DataFrame(results_list)
                     st.dataframe(df_results, use_container_width=True)
                     csv = df_results.to_csv(index=False).encode('utf-8')
-                    st.download_button(label="📥 Baixar CSV", data=csv, file_name="cargos_linkedin.csv", mime="text/csv")
+                    st.download_button(label="📥 Baixar CSV", data=csv, file_name="cargos_multiplos_linkedin.csv", mime="text/csv")
         except Exception as e:
             st.error(f"Ocorreu um erro ao processar o arquivo: {e}")
 
