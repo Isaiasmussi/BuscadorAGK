@@ -99,7 +99,7 @@ with tab2:
         except Exception as e:
             st.error(f"Ocorreu um erro ao processar o arquivo: {e}")
 
-# --- Funcionalidade 3: Busca por Cargos em Lote (com suporte a MÚLTIPLOS CARGOS) ---
+# --- Funcionalidade 3: Busca por Cargos em Lote (com correção para células vazias) ---
 with tab3:
     st.header("Busca por Cargos em Lote no LinkedIn")
     st.markdown("Faça o upload de um arquivo `.csv` com as colunas `Cargo` e `Empresa` (opcional).")
@@ -120,22 +120,26 @@ with tab3:
                     progress_bar = st.progress(0, text="Iniciando busca...")
 
                     for index, row in df_cargos.iterrows():
-                        # Pega a string da coluna 'Cargo'
-                        cargo_input = row.get('Cargo', '').strip()
+                        
+                        # --- A CORREÇÃO ESTÁ AQUI ---
+                        # Garantimos que o valor da célula 'Cargo' seja tratado como texto
+                        # mesmo que esteja vazio (NaN).
+                        cargo_raw = row.get('Cargo', '')
+                        cargo_input = str(cargo_raw).strip() if pd.notna(cargo_raw) else ""
+                        # -----------------------------
+
                         empresa_raw = row.get('Empresa', '')
                         empresa = str(empresa_raw).strip() if pd.notna(empresa_raw) else ""
 
-                        # --- NOVA LÓGICA PARA MÚLTIPLOS CARGOS ---
-                        # 1. Separa os cargos pela vírgula
-                        # 2. Remove espaços extras de cada cargo
-                        # 3. Adiciona aspas em volta de cada cargo
+                        # Se a linha de cargo estiver vazia após a limpeza, pulamos para a próxima
+                        if not cargo_input:
+                            continue
+
+                        # Lógica para múltiplos cargos
                         cargo_parts = [f'"{part.strip()}"' for part in cargo_input.split(',')]
-                        # 4. Junta tudo com o operador OR
                         cargo_query = " OR ".join(cargo_parts)
-                        # 5. Adiciona parênteses se tiver mais de um cargo, para agrupar a lógica
                         if len(cargo_parts) > 1:
                             cargo_query = f"({cargo_query})"
-                        # -------------------------------------------
 
                         # Constrói a query final
                         if empresa:
@@ -146,6 +150,7 @@ with tab3:
                         progress_bar.progress((index + 1) / len(df_cargos), text=f"Buscando: {cargo_input} na {empresa}")
                         search_results = perform_search(query, engine_id=SEARCH_ID_LINKEDIN)
                         
+                        # (O resto da lógica para exibir resultados continua a mesma)
                         if search_results and isinstance(search_results, list):
                             links = [res.get('link') for res in search_results[:3]]
                             titles = [res.get('title') for res in search_results[:3]]
